@@ -1,0 +1,83 @@
+build-lobby:
+  world: world
+  x: 0
+  y: 100
+  z: 0
+
+regions:
+  - name: Region1
+    world: world
+    x: 0
+    y: 64
+    z: 0
+  - name: Region2
+    world: world
+    x: 100
+    y: 64
+    z: 0
+  - name: Region3
+    world: world
+    x: 200
+    y: 64
+    z: 0
+  - name: Region4
+    world: world
+    x: 300
+    y: 64
+    z: 0
+  - name: Region5
+    world: world
+    x: 400
+    y: 64
+    z: 0
+  - name: Region6
+    world: world
+    x: 500
+    y: 64
+    z: 0
+  - name: Region7
+    world: world
+    x: 600
+    y: 64
+    z: 0
+  - name: Region8
+    world: world
+    x: 700
+    y: 64
+    z: 0
+  - name: Region9
+    world: world
+    x: 800
+    y: 64
+    z: 0
+  - name: Region10
+    world: world
+    x: 900
+    y: 64
+    z: 0
+
+themes:
+  - Masa
+  - Koltuk
+  - Klavye
+  - Sandalye
+  - Bahçe
+  - Ev
+  - Araba
+  - Hayvan
+  - Bitki
+  - Oyun
+
+timers:
+  voting-duration: 60  # saniye
+  build-duration: 600  # saniye (10 dakika)
+
+min-players: 10
+max-players: 10
+
+commands:
+  buildermap: buildermap
+  buildreplay: buildreplay
+  buildreload: buildreload
+
+region-size: 44

@@ -81,3 +81,34 @@ commands:
   buildreload: buildreload
 
 region-size: 44
+
+ground-level: 63
+
+fill-items:
+  - GRASS_BLOCK
+  - DIRT
+  - STONE
+  - SAND
+  - WOOD
+  - COBBLESTONE
+  - PLANKS
+
+messages:
+  lobby-join: "&aBuildLobby'ye hoş geldiniz! Pusulaya tıklayın."
+  voting-started: "&eTema oylaması başladı! 60 saniye var."
+  theme-selected: "&aTema seçildi: %theme%"
+  game-started: "&bOyun başladı! Tema: %theme% - %time% saniye build süresi."
+  game-ended: "&cOyun bitti! Puanlama aşaması."
+  winner-announced: "&6Kazanan belirlendi!"
+  lobby-full: "&cLobby dolu! Maksimum %max% oyuncu."
+  config-reloaded: "&aConfig reloaded!"
+  invalid-region: "&cGeçersiz bölge!"
+  voted: "&a%region%'e oy verdiniz."
+  scored: "&a%player%'ye %score% puan verdiniz."
+  replay-started: "&aReplay başladı."
+  replay-stopped: "&aReplay durduruldu."
+  replay-paused: "&aReplay duraklatıldı."
+  replay-resumed: "&aReplay devam ettirildi."
+  replay-speed: "&aReplay hızı: %speed%x"
+  replay-action: "&7%player% (%x%,%y%,%z%) konumunda %block% %action%."
+  not-in-region: "&cSadece kendi alanında işlem yapabilirsiniz!"

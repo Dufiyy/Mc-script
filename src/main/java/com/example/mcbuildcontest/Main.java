@@ -20,7 +20,7 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
-import org.bukkit.Sound;
+import org.bukkit.GameMode;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -47,23 +47,30 @@ public class Main extends JavaPlugin implements Listener {
     private int minPlayers;
     private int maxPlayers;
     private BossBar bossBar;
-    private int regionSize;
+    private int groundLevel;
     private List<BlockChange> blockChanges = new ArrayList<>();
     private boolean replayActive = false;
     private int replayIndex = 0;
     private BukkitRunnable replayTask;
+    private List<Material> fillItems = new ArrayList<>();
+    private Map<Player, Integer> fillPage = new HashMap<>();
+    private Map<Player, Material> selectedFill = new HashMap<>();
+    private boolean replayPaused = false;
+    private int replaySpeed = 1;
 
     private static class BlockChange {
         Location loc;
         Material oldType;
         Material newType;
         long time;
+        Player player;
 
-        BlockChange(Location loc, Material oldType, Material newType, long time) {
+        BlockChange(Location loc, Material oldType, Material newType, long time, Player player) {
             this.loc = loc;
             this.oldType = oldType;
             this.newType = newType;
             this.time = time;
+            this.player = player;
         }
     }
 
@@ -113,6 +120,27 @@ public class Main extends JavaPlugin implements Listener {
 
         // Region size
         regionSize = getConfig().getInt("region-size");
+
+        // Ground level
+        groundLevel = getConfig().getInt("ground-level");
+
+        // Fill items
+        fillItems.clear();
+        List<String> fillItemStrings = getConfig().getStringList("fill-items");
+        for (String item : fillItemStrings) {
+            try {
+                fillItems.add(Material.valueOf(item.toUpperCase()));
+            } catch (IllegalArgumentException e) {
+                getLogger().warning("Geçersiz fill item: " + item);
+            }
+        }
+
+        // Messages
+        if (getConfig().getConfigurationSection("messages") != null) {
+            for (String key : getConfig().getConfigurationSection("messages").getKeys(false)) {
+                messages.put(key, getConfig().getString("messages." + key));
+            }
+        }
     }
 
     @Override
@@ -146,7 +174,7 @@ public class Main extends JavaPlugin implements Listener {
 
         if (cmd.getName().equalsIgnoreCase("buildermap")) {
             if (participants.size() >= maxPlayers) {
-                player.sendMessage(ChatColor.RED + "Lobby dolu! Maksimum " + maxPlayers + " oyuncu.");
+                player.sendMessage(getMessage("lobby-full", "%max%", String.valueOf(maxPlayers)));
                 return true;
             }
             player.teleport(buildLobby);
@@ -156,7 +184,7 @@ public class Main extends JavaPlugin implements Listener {
             }
             player.sendTitle(ChatColor.GREEN + "BuildLobby'ye Hoş Geldiniz!", ChatColor.YELLOW + "Pusulaya tıklayın.");
             player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
-            player.sendMessage("BuildLobby'ye hoş geldiniz! Pusulaya tıklayın.");
+            player.sendMessage(getMessage("lobby-join"));
             // Eğer min oyuncu varsa oylama başlat
             if (participants.size() >= minPlayers && !votingActive && !gameActive) {
                 startVoting();
@@ -177,19 +205,43 @@ public class Main extends JavaPlugin implements Listener {
                     if (replayActive) {
                         stopReplay();
                     }
+                } else if (subCmd.equalsIgnoreCase("pause")) {
+                    if (replayActive && !replayPaused) {
+                        replayPaused = true;
+                        player.sendMessage(getMessage("replay-paused"));
+                    }
+                } else if (subCmd.equalsIgnoreCase("resume")) {
+                    if (replayActive && replayPaused) {
+                        replayPaused = false;
+                        player.sendMessage(getMessage("replay-resumed"));
+                    }
+                } else if (subCmd.equalsIgnoreCase("speed")) {
+                    if (args.length > 1) {
+                        try {
+                            int speed = Integer.parseInt(args[1]);
+                            if (speed > 0 && speed <= 10) {
+                                replaySpeed = speed;
+                                player.sendMessage(getMessage("replay-speed", "%speed%", String.valueOf(speed)));
+                            } else {
+                                player.sendMessage("Hız 1-10 arası olmalı.");
+                            }
+                        } catch (NumberFormatException e) {
+                            player.sendMessage("Geçersiz hız.");
+                        }
+                    }
                 } else if (subCmd.equalsIgnoreCase("forward")) {
                     if (replayActive) {
-                        replayIndex = Math.min(replayIndex + 10, blockChanges.size() - 1);
+                        replayIndex = Math.min(replayIndex + (10 * replaySpeed), blockChanges.size() - 1);
                         applyReplayStep();
                     }
                 } else if (subCmd.equalsIgnoreCase("backward")) {
                     if (replayActive) {
-                        replayIndex = Math.max(replayIndex - 10, 0);
+                        replayIndex = Math.max(replayIndex - (10 * replaySpeed), 0);
                         applyReplayStep();
                     }
                 }
             } else {
-                player.sendMessage("Kullanım: /buildreplay start|stop|forward|backward");
+                player.sendMessage("Kullanım: /buildreplay start|stop|pause|resume|speed <1-10>|forward|backward");
             }
             return true;
         }
@@ -197,7 +249,7 @@ public class Main extends JavaPlugin implements Listener {
         if (cmd.getName().equalsIgnoreCase("buildreload")) {
             reloadConfig();
             loadConfig();
-            player.sendMessage(ChatColor.GREEN + "Config reloaded!");
+            player.sendMessage(getMessage("config-reloaded"));
             return true;
         }
 
@@ -217,17 +269,34 @@ public class Main extends JavaPlugin implements Listener {
         ItemStack item = player.getItemInMainHand();
         if (item != null && item.getType() == Material.COMPASS && item.getItemMeta().getDisplayName().equals(ChatColor.GOLD + "Tema Seç")) {
             openThemeGUI(player);
+        } else if (item != null && item.getType() == Material.DIAMOND_BLOCK && item.getItemMeta().getDisplayName().equals(ChatColor.GOLD + "Zemin Doldurucu")) {
+            openFillGUI(player);
         }
     }
 
-    private void openThemeGUI(Player player) {
-        Inventory gui = Bukkit.createInventory(null, 18, "Tema Seç");
-        for (int i = 0; i < themes.size(); i++) {
-            ItemStack item = new ItemStack(Material.PAPER);
-            ItemMeta meta = item.getItemMeta();
-            meta.setDisplayName(themes.get(i));
-            item.setItemMeta(meta);
+    private void openFillGUI(Player player) {
+        Inventory gui = Bukkit.createInventory(null, 9, "Zemin Doldur");
+        int page = fillPage.getOrDefault(player, 0);
+        int start = page * 6;
+        for (int i = 0; i < 6 && start + i < fillItems.size(); i++) {
+            ItemStack item = new ItemStack(fillItems.get(start + i));
             gui.setItem(i, item);
+        }
+        // İleri
+        if (start + 6 < fillItems.size()) {
+            ItemStack next = new ItemStack(Material.ARROW);
+            ItemMeta meta = next.getItemMeta();
+            meta.setDisplayName(ChatColor.GREEN + "İleri");
+            next.setItemMeta(meta);
+            gui.setItem(7, next);
+        }
+        // Geri
+        if (page > 0) {
+            ItemStack prev = new ItemStack(Material.ARROW);
+            ItemMeta meta = prev.getItemMeta();
+            meta.setDisplayName(ChatColor.RED + "Geri");
+            prev.setItemMeta(meta);
+            gui.setItem(8, prev);
         }
         player.openInventory(gui);
     }
@@ -244,6 +313,27 @@ public class Main extends JavaPlugin implements Listener {
                 player.sendMessage("Oy verdiniz: " + theme);
                 player.closeInventory();
             }
+        } else if (event.getView().getTitle().equals("Zemin Doldur")) {
+            event.setCancelled(true);
+            Player player = (Player) event.getWhoClicked();
+            ItemStack item = event.getCurrentItem();
+            if (item != null) {
+                if (item.getType() == Material.ARROW) {
+                    String name = item.getItemMeta().getDisplayName();
+                    int page = fillPage.getOrDefault(player, 0);
+                    if (name.equals(ChatColor.GREEN + "İleri")) {
+                        fillPage.put(player, page + 1);
+                    } else if (name.equals(ChatColor.RED + "Geri")) {
+                        fillPage.put(player, page - 1);
+                    }
+                    openFillGUI(player);
+                } else {
+                    // Blok seç
+                    selectedFill.put(player, item.getType());
+                    fillFloor(player, item.getType());
+                    player.closeInventory();
+                }
+            }
         }
     }
 
@@ -258,7 +348,7 @@ public class Main extends JavaPlugin implements Listener {
         playSoundToAll(Sound.ENTITY_EXPERIENCE_ORB_PICKUP);
         updateBossBar("Tema Oylaması: " + (votingDurationTicks / 20) + " saniye", 1.0);
         updateTabList(ChatColor.GREEN + "Build Contest", ChatColor.AQUA + "Tema: Seçiliyor\nSüre: " + (votingDurationTicks / 20) + "s");
-        Bukkit.broadcastMessage("Tema oylaması başladı! " + (votingDurationTicks / 20) + " saniye var.");
+        Bukkit.broadcastMessage(getMessage("voting-started"));
         new BukkitRunnable() {
             int timeLeft = votingDurationTicks / 20;
             @Override
@@ -282,7 +372,7 @@ public class Main extends JavaPlugin implements Listener {
             sendTitleToAll(ChatColor.GREEN + "Tema Seçildi!", ChatColor.YELLOW + selectedTheme);
             playSoundToAll(Sound.ENTITY_PLAYER_LEVELUP);
             updateTabList(ChatColor.GREEN + "Build Contest", ChatColor.AQUA + "Tema: " + selectedTheme + "\nDurum: Başlıyor");
-            Bukkit.broadcastMessage("Seçilen tema: " + selectedTheme);
+            Bukkit.broadcastMessage(getMessage("theme-selected", "%theme%", selectedTheme));
             new BukkitRunnable() {
                 @Override
                 public void run() {
@@ -309,6 +399,12 @@ public class Main extends JavaPlugin implements Listener {
                 p.teleport(regionLoc);
                 assignedRegions.put(p, regionIndex);
                 p.setGameMode(GameMode.CREATIVE);
+                // Özel item ver
+                ItemStack filler = new ItemStack(Material.DIAMOND_BLOCK);
+                ItemMeta meta = filler.getItemMeta();
+                meta.setDisplayName(ChatColor.GOLD + "Zemin Doldurucu");
+                filler.setItemMeta(meta);
+                p.getInventory().setItem(8, filler); // Sağ slot (9. slot, 0-based 8)
                 // Duvar koy (örnek: etraflarına glass)
                 buildWalls(regionLoc, regionIndex);
                 regionIndex++;
@@ -389,8 +485,24 @@ public class Main extends JavaPlugin implements Listener {
                 return;
             }
             // Kayıt
-            blockChanges.add(new BlockChange(loc, Material.AIR, event.getBlock().getType(), System.currentTimeMillis()));
+            blockChanges.add(new BlockChange(loc, Material.AIR, event.getBlock().getType(), System.currentTimeMillis(), player));
             placedBlocks.add(loc);
+        }
+    }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player player = event.getPlayer();
+        Location loc = event.getBlock().getLocation();
+        if (gameActive && assignedRegions.containsKey(player)) {
+            if (!isInPlayerRegion(player, loc)) {
+                event.setCancelled(true);
+                player.sendMessage(ChatColor.RED + "Sadece kendi alanında inşa edebilirsiniz!");
+                return;
+            }
+            // Kayıt
+            blockChanges.add(new BlockChange(loc, event.getBlock().getType(), Material.AIR, System.currentTimeMillis(), player));
+            placedBlocks.remove(loc);
         }
     }
 
@@ -435,24 +547,36 @@ public class Main extends JavaPlugin implements Listener {
         }
     }
 
+    private String getMessage(String key) {
+        return ChatColor.translateAlternateColorCodes('&', messages.getOrDefault(key, key));
+    }
+
+    private String getMessage(String key, String... replacements) {
+        String msg = messages.getOrDefault(key, key);
+        for (int i = 0; i < replacements.length; i += 2) {
+            msg = msg.replace(replacements[i], replacements[i + 1]);
+        }
+        return ChatColor.translateAlternateColorCodes('&', msg);
+    }
+
     private void startReplay(Player player) {
         replayActive = true;
         replayIndex = 0;
-        player.setGameMode(GameMode.CREATIVE);
+        player.setGameMode(GameMode.SPECTATOR);
         player.teleport(regions.values().iterator().next()); // İlk bölgeye
-        player.sendMessage("Replay başladı.");
+        player.sendMessage(getMessage("replay-started"));
         replayTask = new BukkitRunnable() {
             @Override
             public void run() {
-                if (replayIndex < blockChanges.size()) {
+                if (!replayPaused && replayIndex < blockChanges.size()) {
                     applyReplayStep();
-                    replayIndex++;
-                } else {
+                    replayIndex += replaySpeed;
+                } else if (replayIndex >= blockChanges.size()) {
                     stopReplay();
                 }
             }
         };
-        replayTask.runTaskTimer(this, 0, 20); // Her saniye
+        replayTask.runTaskTimer(this, 0, 20 / replaySpeed); // Hıza göre
     }
 
     private void stopReplay() {
@@ -464,12 +588,19 @@ public class Main extends JavaPlugin implements Listener {
         for (BlockChange change : blockChanges) {
             change.loc.getBlock().setType(change.oldType);
         }
-        Bukkit.broadcastMessage("Replay durduruldu.");
+        Bukkit.broadcastMessage(getMessage("replay-stopped"));
     }
 
-    private void applyReplayStep() {
-        if (replayIndex < blockChanges.size()) {
-            BlockChange change = blockChanges.get(replayIndex);
-            change.loc.getBlock().setType(change.newType);
+    private void fillFloor(Player player, Material mat) {
+        if (!assignedRegions.containsKey(player)) return;
+        int regionIndex = assignedRegions.get(player);
+        Location center = regions.get("Region" + (regionIndex + 1));
+        int half = regionSize / 2;
+        for (int x = center.getBlockX() - half; x <= center.getBlockX() + half; x++) {
+            for (int z = center.getBlockZ() - half; z <= center.getBlockZ() + half; z++) {
+                Location loc = new Location(center.getWorld(), x, groundLevel, z);
+                loc.getBlock().setType(mat);
+            }
         }
+        player.sendMessage(ChatColor.GREEN + "Zemin " + mat.name() + " ile dolduruldu!");
     }

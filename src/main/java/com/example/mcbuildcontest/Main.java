@@ -21,6 +21,9 @@ import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.GameMode;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.ChatColor;
+import org.bukkit.Sound;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -57,6 +60,8 @@ public class Main extends JavaPlugin implements Listener {
     private Map<Player, Material> selectedFill = new HashMap<>();
     private boolean replayPaused = false;
     private int replaySpeed = 1;
+    private int regionSize;
+    private Map<String, String> messages = new HashMap<>();
 
     private static class BlockChange {
         Location loc;
@@ -153,7 +158,6 @@ public class Main extends JavaPlugin implements Listener {
         // BossBar oluştur
         bossBar = Bukkit.createBossBar("Build Contest", BarColor.BLUE, BarStyle.SOLID);
         bossBar.setVisible(false);
-    }
     }
 
     @Override
@@ -254,6 +258,7 @@ public class Main extends JavaPlugin implements Listener {
         }
 
         return false;
+    }
 
     private void giveCompass(Player player) {
         ItemStack compass = new ItemStack(Material.COMPASS);
@@ -604,3 +609,4 @@ public class Main extends JavaPlugin implements Listener {
         }
         player.sendMessage(ChatColor.GREEN + "Zemin " + mat.name() + " ile dolduruldu!");
     }
+}
